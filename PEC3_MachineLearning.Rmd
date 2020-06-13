@@ -1,0 +1,480 @@
+---
+title: "PEC2_Machine Learning"
+author: "Alicia PLiego"
+date: "6/12/2020"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+
+## Introducción:
+
+En esta PEC se va a realizar un informe basado en datos de Cancer de mama. Los datos se pueden encontrar en el siguiente enlace Github, así como el informe de esta PEC.
+
+El objetivo del análisis es implementar diferentes algoritmos de Machine Learning:
+  - k-Nearest Neighbour,
+  - Naive Bayes,
+  - Artificial Neural Network,
+  - Support Vector Machine 
+  - Decision Tree,
+  - Random Forest.
+Para diagnosticar el tipo de cancer de mama.
+
+
+```{r}
+#setwd("~/Desktop/UOC2020/Machine_learning/PEC3")
+```
+Leer el archivo de datos:
+```{r setup, include=FALSE}
+mydata <- read.csv2(file='BreastCancer1.csv', sep=',')
+head(mydata)
+```
+
+Resumen estadístico de las diferentes variables:
+```{r}
+summary(mydata)
+```
+Aquí podemos ver un resumen de todas las variables que contiene el archivo BreastCancer1.csv. En el fichero BreastCancer1.csv estan los datos sobre el cáncer de mama de 569 casos de biopsias de cáncer,
+cada uno con 32 características. La primera característica es un número de identificación, después son 30
+mediciones de laboratorio con valores numéricos y por último, esta el diagnóstico. El diagnóstico se codifica
+como M para indicar maligno o B para indicar benigno.
+
+```{r}
+str(mydata)
+```
+Limpieza de datos, eliminando las columnas no numéricas, como vemos, las columnas numéricas contienen datos como factores, por lo que debemos convertirlos a numéricos.
+```{r}
+mydata2 <-mydata[1:(length(mydata)-1)]
+mydata2 <- mydata2[,-1]
+
+```
+
+
+```{r}
+mydata2[] <- lapply(mydata2, function(x) {
+    if(is.factor(x)) as.numeric(as.character(x)) else x
+})
+sapply(mydata2, class)
+```
+
+Resumen gráfico de las variables numéricas:
+
+```{r}
+boxplot(mydata2)
+
+```
+```{r}
+library(plyr)
+count(mydata, 'diagnosis')
+```
+Tabla de las frecuencias de cada tipo de diagnóstico, como vemos el diagnóstico benigno es más frecuente que el maligno.
+
+**Transformación de los datos:**
+
+Primero se normalizan los datos:
+
+```{r}
+
+normalize <- function(x) {
+return ((x - min(x)) / (max(x) - min(x)))
+}
+```
+
+
+```{r}
+str(mydata2)
+```
+Normalizar los datos numéricos:
+
+```{r}
+mydata_n <- as.data.frame(lapply(mydata2, normalize))
+```
+
+Asignación de train y tets:
+
+```{r}
+mydata <- mydata[,-1]
+pClass <- ncol(mydata)
+```
+
+
+```{r}
+
+set.seed(123456) #fijar la semilla para el generador pseudoaleatorio
+train<-sample(1:nrow(mydata),round(2*nrow(mydata)/3,3))
+
+#Crear los datos de test y de training
+class_train <- mydata[train,pClass]
+class_test  <- mydata[-train,pClass]
+```
+
+## Modelos predictivos aplicados.
+
+**k-Nearest Neighbour**
+
+El algoritmo kNN comienza con un conjunto de datos de entrenamiento donde se conoce sus categorias, es decir, sus etiquetas. Por otra parte, tenemos un conjunto de datos de prueba que contiene ejemplos no etiquetados del mismo tipo que los datos de entrenamiento. Para cada registro en el conjunto de datos de prueba, kNN identifica k registros en los datos de entrenamiento que son los “más cercanos” en similitud,
+donde k es un valor positivo especificado de antemano. Al registro no etiquetado se le asigna la clase de la
+mayoría de los k vecinos más cercanos.
+
+1- 
+
+```{r}
+mydata_train<-mydata_n[train,]
+mydata_test<-mydata_n[-train,]
+```
+
+
+```{r}
+library(gmodels)
+library(class)
+
+set.seed(123456) #fijar la semilla para el inicio del clasificador
+ks <- c(3,5,7,11,23,45, 67)
+resum <- data.frame(ks, FN=NA, FP=NA, mal_clas=NA)
+j <- 0
+for (i in ks){
+j <- j +1
+test_pred <- knn(train =mydata_train,
+test = mydata_test,
+cl = class_train, k=i)
+conf.mat <- CrossTable(x = class_test,
+y = test_pred ,
+prop.chisq=FALSE)
+resum[j,2:4] <- c(conf.mat$t[2,1],
+conf.mat$t[1,2], ((conf.mat$t[1,2]+conf.mat$t[2,1])/sum(conf.mat$t))*100)
+}
+```
+
+
+
+```{r}
+require(knitr, quietly = TRUE)
+kable(resum, col.names=c("valor k",
+"# falsos negativos",
+"# falsos positivos",
+"% mal clasificados"),
+align= c("l","c","c","c"),
+caption= paste("Algoritmo kNN: ",
+"params$file" ,sep=""))
+```
+
+Entre los 7 valores de k, el que tiene menor porcentaje de mal clasificados es k=3, k= 7 y k= 11. El rango de % de mal clasificados es entre 3.15% y 4.7%. 
+
+Mientras que k=3 tiene un número de falsos positivos es de 2 y falsos negativos es de 4. En k=7, el número de falsos positivos y falsos negativos es de 3. Mientras que para k=11 para falsos negativos es de 5 y falsos positivos es de 1. 
+
+
+
+```{r}
+library(caret)
+require(knitr, quietly = TRUE)
+confusionMatrix(test_pred, class_test)
+```
+Podemos ver con la Confusion Matrix, que el índice Accuracy es de 0.9526 y el valor kappa es de 0.8973.
+
+**Naive-Bayes**
+
+Es un método importante no sólo porque ofrece un análisis cualitativo de las atributos y valores que pueden intervenir en el problema, sino porque da cuenta también de la importancia cuantitativa de esos atributos. En el aspecto cualitativo podemos representar cómo se relacionan esos atributos ya sea en una forma causal, o señalando simplemente de la correlación que existe entre esas variables (o atributos). Cuantitativamente (y ésta es la gran aportación de los métodos bayesianos), da una medida probabilística de la importancia de esas variables en el problema (y por lo tanto una probabilidad explícita de las hipótesis que se formulan).
+
+
+Se utilizan los datos originales:
+```{r}
+mydata_train<-mydata[train, -c(pClass)]
+mydata_test <-mydata[-train, -c(pClass)]
+```
+
+Entrenamiento de los datos con estimador laplaciano y sin estimador laplaciano:
+
+```{r}
+require(e1071)
+#Entrenamiento con y sin estimador laplaciano
+set.seed(123456) # to guarantee repeatable results
+NB1 <- naiveBayes(mydata_train, class_train, type="raw", laplace=0)
+NB2 <- naiveBayes(mydata_train, class_train, type="raw", laplace=1)
+```
+
+```{r}
+require(knitr, quietly = TRUE)
+library(caret)
+```
+
+Evaluación de los modelos:
+```{r}
+predNB1 <- predict(NB1, mydata_test, type="class")
+predNB2 <- predict(NB2, mydata_test, type="class")
+```
+
+```{r}
+
+evalNB1 <- confusionMatrix(predNB1, class_test)
+evalNB2 <- confusionMatrix(predNB2, class_test)
+```
+
+Tabla de resultados:
+```{r}
+require(knitr, quietly = TRUE)
+lp <- data.frame(laplace=c(0,1))
+resumNB <- rbind(round(evalNB1$overall[1:4],3),round(evalNB2$overall[1:4],3))
+resumNB <- cbind(lp,resumNB)
+kable(resumNB, caption= paste("Algoritmo Naive Bayes ",
+sep=""))
+```
+
+Podemos observar que con este algoritmo, cuando tenemos estimador laplaciano la accuracy es menor que sin el estimador laplaciano. 
+
+**Artificial Neuronal Network**
+
+Una red de inteligencia artificial modela la relación entre unas señales de entrada y unas señales de salida
+usando un modelo que se basa en cómo funcionan las conexiones neuronales en el cerebro humano, es decir,
+cómo nuestro cerebro responde ante estímulos de los receptores sensoriales. Simplemente de la misma manera
+que el cerebro humano usa una red de células neuronales interconectadas para crear un procesador masivo,
+el algoritmo de red neuronal artificial usa una red de neuronas artificiales o nodos para resolver problemas
+de aprendizaje.
+
+Para este algoritmo, utilizamos los datos normalizados de las variables numéricas:
+
+```{r}
+mydata_n1 <- mydata_n
+mydata_n1$class <- mydata$diagnosis
+```
+
+```{r}
+mydata_train<-mydata_n1[train,]
+mydata_test<-mydata_n1[-train,]
+```
+
+Entrenamos dos modelos con una capa oculta con un nodo y tres nodos.
+
+```{r}
+library(neuralnet)
+
+# simple ANN with only a single hidden neuron
+set.seed(123456) # to guarantee repeatable results
+mydata_model1 <- neuralnet(class ~ .,
+data = mydata_train,
+hidden=1)
+
+# simple ANN with 3 hidden neuron
+set.seed(123456) # to guarantee repeatable results
+mydata_model3 <- neuralnet(class ~ .,
+data = mydata_train,
+hidden=3)
+```
+
+Se prueba el modelo con los datos test, y se obtienen la evaluación correspondiente:
+
+```{r}
+# obtain model results
+model_results1 <- compute(mydata_model1, mydata_test)$net.result
+idx <- apply(model_results1, 1 , which.max)
+prediction <- factor(idx, levels = 1:length(levels(mydata_test$class)),
+labels=levels(mydata_test$class))
+evalANN1 <- confusionMatrix(prediction, class_test)
+model_results3 <- compute(mydata_model3, mydata_test)$net.result
+idx <- apply(model_results3, 1, which.max)
+prediction <- factor(idx, levels = 1:length(levels(mydata_test$class)),
+labels=levels(mydata_test$class))
+evalANN3 <- confusionMatrix(prediction, class_test)
+```
+
+```{r}
+#require(knitr, quietly = TRUE)
+nd<- data.frame(nodo=c(1,3))
+resum <- rbind(round(evalANN1$overall[1:4],3),round(evalANN3$overall[1:4],3))
+resum <-cbind(nd,resum)
+
+kable(resum, caption= paste("Artificial Neural Networks ",
+sep=""))
+```
+
+El modelo con un nodo tiene una mayor accuracy 0.984 que el valor con tres nodos 0.979. 
+
+
+```{r}
+require(NeuralNetTools)
+plotnet(mydata_model3, alpha=0.6)
+
+plotnet(mydata_model1, alpha=0.6)
+```
+
+**Support Vector Machines**
+
+Un SVM (Supported Vector Machine) se puede imaginar como una superficie que define una linea límite
+entre varios puntos de datos que representan ejemplos que son mostrados en un espacio multidimensional
+de acuerdo a sus valores futuros. El objetivo de un SVM es crear un límite plano, llamado hiperplano, que
+dará lugar a una partición de datos homogénea en cada lado. De esta forma, el aprendizaje SVM combina
+aspectos del aprendizaje basado en los nearest neighbors y en los modelos de regresión, lo que hace que este
+algoritmo sea extremedamente potente.
+
+Se utilizan los datos de las variables cuantitativas estandarizadas:
+
+```{r}
+mydata_n2 <- mydata_n1
+mydata_train<-mydata_n2[train,]
+mydata_test<-mydata_n2[-train,]
+```
+
+Se entrena el modelo:
+
+```{r}
+library(kernlab)
+set.seed(123456) # to guarantee repeatable results
+mydata_model1 <- ksvm(class ~ ., data = mydata_train,
+kernel = "vanilladot")
+
+```
+
+Setting default kernel parameters
+
+```{r}
+set.seed(123456) 
+mydata_model2 <- ksvm(class ~ ., data = mydata_train,
+kernel = "rbfdot")
+```
+
+```{r}
+prediction<- predict(mydata_model1, mydata_test)
+evalSVML <- confusionMatrix(prediction, class_test)
+prediction <- predict(mydata_model2, mydata_test)
+evalSVMG <- confusionMatrix(prediction, class_test)
+```
+
+```{r}
+require(knitr, quietly = TRUE)
+tipus<- data.frame(modelo=c("Lineal","Gaussiano"))
+resum <- rbind(round(evalSVML$overall[1:4],3),round(evalSVMG$overall[1:4],3))
+resum <-cbind(tipus,resum)
+kable(resum, caption= paste("Support Vector Machine",
+sep=""))
+```
+Entre el modelo Lineal y el modelo Gausiano, podemos ver que la accuracy es la misma, así como los niveles de kappa.
+
+**Decision tree**
+
+Este algoritmo se basa en un conjunto de datos, se fabrican diagramas de construcciones lógicas, muy similares a los sistemas de predicción basados en reglas, que sirven para representar y categorizar una serie de condiciones que ocurren de forma sucesiva, para la resolución de un problema.
+
+```{r}
+mydata_train<-mydata[train,]
+mydata_test<-mydata[-train,]
+```
+
+```{r}
+#install.packages('C50')
+```
+
+```{r}
+library(C50)
+set.seed(1234556) # to guarantee repeatable results
+mydata_model1 <- C5.0(diagnosis ~ ., data = mydata_train)
+```
+
+```{r}
+set.seed(123456) # to guarantee repeatable results
+mydata_model2 <- C5.0(diagnosis~ ., data = mydata_train, trial=10)
+```
+
+
+```{r}
+prediction <- predict(mydata_model1 , mydata_test)
+evalC50 <- confusionMatrix(prediction, class_test)
+```
+
+```{r}
+prediction <- predict(mydata_model2 , mydata_test)
+evalC50.b <- confusionMatrix(prediction, class_test)
+```
+
+
+```{r}
+require(knitr, quietly = TRUE)
+tipus<- data.frame(modelo=c("Simple","Boosting"))
+resum <- rbind(round(evalC50$overall[1:4],3),round(evalC50.b$overall[1:4],3))
+resum <-cbind(tipus,resum)
+kable(resum, caption= paste("Decision Trees",
+sep=""))
+```
+Entre los dos modelos no se observa una diferencia entre los valores de accuracy entre los dos modelos.
+
+
+**Random Forest**
+
+Combinación de árboles predictores tal que cada árbol depende de los valores de un vector aleatorio probado independientemente y con la misma distribución para cada uno de estos. Es una modificación sustancial de bagging que construye una larga colección de árboles no correlacionados y luego los promedia.
+
+Para este algoritmo se utilizan los datos numéricos que se convierten en numéricos ya que los originales se muestran como factores:
+ 
+```{r}
+mydata3 <-mydata[1:(length(mydata)-1)]
+mydata3 <- mydata2[,-1]
+
+mydata3[] <- lapply(mydata3, function(x) {
+    if(is.factor(x)) as.numeric(as.character(x)) else x
+})
+sapply(mydata3, class)
+
+mydata3$diagnosis <- mydata$diagnosis
+
+```
+
+
+```{r}
+mydata_train<-mydata3[train,]
+mydata_test<-mydata3[-train,]
+```
+
+```{r}
+#install.packages('randomForest')
+```
+
+```{r}
+library(randomForest)
+set.seed(123456) # to guarantee repeatable results
+mydata_model1 <- randomForest(diagnosis ~ ., data = mydata_train, ntree= 500)
+set.seed(123456) # to guarantee repeatable results
+mydata_model2 <- randomForest(diagnosis ~ ., data = mydata_train, ntree= 1000)
+```
+
+```{r}
+prediction <- predict(mydata_model1 , mydata_test)
+evalRF500<- confusionMatrix(prediction, class_test)
+```
+
+```{r}
+prediction <- predict(mydata_model2 , mydata_test)
+evalRF1000 <- confusionMatrix(prediction, class_test)
+```
+
+```{r}
+require(knitr, quietly = TRUE)
+tipus<- data.frame(ntree=c(500,1000))
+resum <- rbind(round(evalRF500$overall[1:4],3),round(evalRF1000$overall[1:4],3))
+resum <-cbind(tipus,resum)
+kable(resum, caption= paste("Random Forests",
+sep=""))
+```
+
+Entre los dos valores con un ntree de 500, el accuracy es menor que en el ntree=100. 
+```{r}
+varImpPlot(mydata_model2)
+```
+
+
+## Conclusión:
+
+Resumen de los valores de Accurary de los modelos:
+
+- Random Forest(ntree = 1000) :Acc 0.958
+- Decision tree (Boosting)    :Acc 0.558
+- SVM           (Gaussiano)   :Acc 0.984
+- ANN           (Nodos = 1)   :Acc 0.984
+- Naive Bayes   (laplace = 0) :Acc 0.647
+- kNN                         :Acc 0.9526
+
+
+
+Todos los algoritmos tienen un rendimiento bueno, salvo el algoritmo Decision Tree y Naive Bayes, ya que se utilizan para variables discretas y puede ser que no funcione bien con datos numéricos.
+
+El algoritmo con mayor valor de Accuracy es SVM y ANN con un valor de 0.984. El rango de precisión está entre 0.558 y 0.984. Por lo que la diferencia entre el valor máximo y el valor mínimo es de 0.426. Despues de estos, los algoritmos con un mejor comportamiento son: kNN y Random Forest con un ntree = 1000. 
+
+Por lo tanto, los mejores algoritmos para este problema son SVM y ANN además con una fácil interpretación.
+
+
